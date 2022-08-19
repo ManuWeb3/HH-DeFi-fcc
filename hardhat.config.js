@@ -52,7 +52,7 @@ module.exports = {
                 version: "0.8.8",
             },
             {
-                version: "0.6.12",
+                version: "0.6.12",             //  to use ILendingPoolAddressesProvider.sol interface
             },
             {
                 version: "0.4.19",            //  to use IWeth.sol interface
