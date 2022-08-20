@@ -2,21 +2,31 @@
 // write main f() that includes our interaction f()
 // call main f()
 
-const {getWeth} = require("../scripts/getWeth")         //  import getWeth() full f(), not just wethBalance var, (that has wethBalance value) from getWeth.js
+const {getWeth, AMOUNT} = require("../scripts/getWeth")         //  import getWeth() full f(), not just wethBalance var, (that has wethBalance value) from getWeth.js
 const {getNamedAccounts, ethers} = require("hardhat")
-const { getContractFactory } = require("@nomiclabs/hardhat-ethers/types")
 
 async function main() {
 
     await getWeth()                                     //  this will run getWeth() in getWeth.js script - 3 outputs
     const {deployer} = await getNamedAccounts()         //  of course, we need this account for interaction
 
-    const lendingPool = await getLendingPool(deployer)
+    const lendingPool = await getLendingPool(deployer)  // use await to run a f() incl. in this script
 
-    //  1. Deposit
+    //  1. Approve before Deposit
+    //  But before we deposit any token, we'd need to "approve" (ERC20 wala approve) LendingPool.sol that it can take that AMOUNT from us.
+    //  This is per aave docs.
 
-
-
+    //  Else, it'll throw an error "Contract not approved to exec. deposit()"
+    //  To deposit weth, we need weth-token contract address
+    const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    //  Approve: script below bcz will be used frequently
+    await approve(wethTokenAddress, lendingPool.address, AMOUNT, deployer)     // use await to run a f() incl. in this script
+    //  Now, run deposit(), finally
+    console.log("Depositing now...")
+    await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)    //  AMOUNT is ETH, not Weth ???, 
+    //  await tx.wait(1)                                        //  why not tx.wait(1) ?? - recording @ Aug 19. Understand await better
+    console.log("Deposited!!")
+    //  what if we gave deployer-address at arg#1 ?? Error is thrown - "unrecognizedContact", means it's looking for only ERC20 type Token contract
 }
     //  for DEPOSIT into Aave
     //  deposit() interact in LendingPool.sol
@@ -38,6 +48,25 @@ async function getLendingPool(account) {            //  this will interact with 
     const lendingPool = await ethers.getContractAt("ILendingPool", lendingPoolAddress, account)          // returns contract abstraction of LendingPool.sol
     console.log(`LendingPool Address: ${lendingPool.address}`)              // keep it here for tracking the control
     return lendingPool
+}
+
+    // generic mechanism to Approve before we deposit()
+async function approve(erc20Address, spenderAddress, amountToSpend, account) {
+    //  erc20Address - needed to further pass it on into the getContractAt() to get contract abstraction instance of ERC20.sol to run approve f()
+    //  spender, amountToSpend will be used inside Approve()
+    //  account = deployer everywhere
+
+    //  took IERC20 below instead of IWeth.sol bcz we just need an ERC20 kind of interface here, so IERC20.sol does good.
+    const erc20Token = await ethers.getContractAt("IERC20", erc20Address, account)      // attach erc20Token with deployer
+    //  can go with "IWeth.sol" as well bcz IERC20.sol is a subset of IWeth.sol (deposit(), withdraw() are extra)
+    //  we only need approve() which is included in the both
+    //  MEANS - do not need an EXACT MATCH b/e the Interface and the contract at that address, just the function matters.
+    const tx = await erc20Token.approve(spenderAddress, amountToSpend)      //  deployer (msg.sender) is actually running this f()
+    //  hence, balance of deployer is in the picture here, in case of only 1 depositor i.e. deployer, bal(WETH9.sol) = bal(deployer)...why?
+    //  bcz contract's balance also gets updated with every .deposit() getting run.
+    //  Hence, deployer approved LP.sol (spender) to spend AMOUNT on deployer's behalf
+    await tx.wait(1)
+    console.log("Approved!!")
 }
 
 main()
