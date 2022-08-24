@@ -1,8 +1,9 @@
 const {getNamedAccounts, ethers, deployments} = require("hardhat")
 
 AMOUNT = ethers.utils.parseEther("0.02")                // "await" not needed to parseEther()
-
-// let wethString, wethBalance
+//  Parse the etherString=0.02 representation of ether into a BigNumber instance of the amount of wei. I/p must be string.
+//  parseEther => BigNumber (equivalent of wei)
+//  let wethString, wethBalance
 
 async function getWeth () {
     

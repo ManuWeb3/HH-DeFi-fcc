@@ -5,6 +5,7 @@
 const {getWeth, AMOUNT} = require("../scripts/getWeth")         //  import getWeth() full f(), not just wethBalance var, (that has wethBalance value) from getWeth.js
 const {getNamedAccounts, ethers} = require("hardhat")
 
+//  all values returned by the functions below main() will be used inside main() as only main() is being run / exec.
 async function main() {
 
     await getWeth()                                     //  this will run getWeth() in getWeth.js script - 3 outputs
@@ -20,14 +21,76 @@ async function main() {
     //  To deposit weth, we need weth-token contract address
     const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
     //  Approve: script below bcz will be used frequently
-    await approve(wethTokenAddress, lendingPool.address, AMOUNT, deployer)     // use await to run a f() incl. in this script
+    await approve(wethTokenAddress, lendingPool.address, AMOUNT, deployer)      // use await to run a f() incl. in this script
     //  Now, run deposit(), finally
     console.log("Depositing now...")
-    await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)    //  AMOUNT is ETH, not Weth ???, 
-    //  await tx.wait(1)                                        //  why not tx.wait(1) ?? - recording @ Aug 19. Understand await better
+    await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)            //  AMOUNT is ETH, not Weth ???, 
+    //  why not tx.wait(1) ?? - recording @ Aug 19. Understand await better, later.
+    //  so much so when we used 'await' for borrow()
     console.log("Deposited!!")
     //  what if we gave deployer-address at arg#1 ?? Error is thrown - "unrecognizedContact", means it's looking for only ERC20 type Token contract
+
+
+    //  2. Borrow:
+    //  getuserAccountData()
+    //  arg - user address, o/p = 6 values
+    //  if we have 1 ETH in collateral DOESN'T mean that we can borrow 1 ETH
+    //  LTV: 75% of DAI can be borrowed out of 1 ETH's equivalent value
+    let {availableBorrowsETH, totalDebtETH} = await getBorrowUserData(lendingPool, deployer)            //  2 curly braces to save a group of returned vars.
+    const daiPrice = await getDaiPrice()
+    //  calling these f() will print outputs only.
+    //  .toString(), still can do arithmatic ops. But why .toString() needed ?? But why .toSnumber() needed ??
+    //  .95 to avoid risk of getting liquidated
+    //  reciprocal inside () also works in JS
+    //  70% or 95% is under my control, not Aave's, for my safety, not borrowing 100%
+    const amountDaiToBorrow = availableBorrowsETH.toString() * (1/daiPrice.toNumber())
+    const amountDaiToBorrowWei = await ethers.utils.parseEther(amountDaiToBorrow.toString())        // no more decimal rep. in output
+    //  Parse the 'etherString' representation of ether into a BigNumber instance of the amount of wei. I/p must be string.
+    //  parseEther => BigNumber (equivalent of wei)
+    //  we can pass 'amount" to borrow in the 'borrow()' ONLY as wei, that's why we have to convert into wei
+    console.log(`You can borrow ${amountDaiToBorrow} DAI`)
+    
+    // DAI address
+    const daiAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+    await borrowDai(lendingPool, daiAddress, amountDaiToBorrowWei, deployer)      //  'amount' must in wei else error with decimal form (amountDaiToBorrow)
+    await getBorrowUserData(lendingPool, deployer)
+    //  we're not storing the 2 returned values this time as we do nto need those here, also: no error will be there.
+
 }
+
+async function borrowDai(lendingPool, daiAddress, amountDaiToBorrowWei, account ) {
+    const borrowTx = await lendingPool.borrow(daiAddress, amountDaiToBorrowWei, 1, 0, account)
+    await borrowTx.wait(1)
+    //  why did we not use wait(1) in deposit() ??? later, after understanding 'await'
+    console.log("You've borrowed!!")
+}
+
+async function getDaiPrice() {
+    //  ABI and Interface can belong to difference contracts but should be related, at the least
+    //  (like IERC20.sol was taken instead of IWETH.sol for IWETH.sol's address - only to use .approve()
+    //  here 'AggregatorV3Interface.sol' is deployed as a part of 'EACAggregatorProxy.sol' at this address - 0x773616....
+    //  Just READING the price does not require 'deployer' - WOW, never knew!!
+    //  'deployer' is required to send transactions / run setters
+    //  also, 'daiEthPriceFeed' will have access to ONLY AggregatorV3Interface's functions on this address - imp. of using ABI here.
+    const daiEthPriceFeed = await ethers.getContractAt("AggregatorV3Interface", "0x773616E4d11A78F511299002da57A0a94577F1f4")
+    const price = (await daiEthPriceFeed.latestRoundData())[1]
+    //  only save 'answer' value in 'price', answer at index [1]. Total 5 values are supposed to be ret. by latestRD()
+    console.log(`The DAI / ETH price is ${price.toString()}`)
+    return price
+}
+    //  getting User's Borrow-data
+async function getBorrowUserData(lendingPool, account) {
+    //  BorrowData = What you already borrowed, what you can borrow further
+    //  just pulling out 3 vars that we need, not all 6
+    const {totalCollateralETH, totalDebtETH, availableBorrowsETH } = await lendingPool.getUserAccountData(account)
+    
+    console.log(`You deposited ${totalCollateralETH} worth of ETH`)
+    console.log(`You have already borrowed ${totalDebtETH} worth of ETH`)
+    console.log(`You can still borrow ${availableBorrowsETH} worth of ETH`)                 //  82.5% threshold OR ltv ??        
+    return {availableBorrowsETH, totalDebtETH}
+    //  2 curly braces to return a group of vars.
+}
+
     //  for DEPOSIT into Aave
     //  deposit() interact in LendingPool.sol
     //  NEED - ABI (Interface), Address (LendingPoolAddressesProvider.sol = 0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5)
@@ -76,3 +139,17 @@ main()
     process.exit(1)
 })
 // won't work with this main(), instead we'll import the getWeth.js script here.
+
+
+//  Risk parameters analysis:
+/*  Loan To value:
+    The Loan to Value (LTV) ratio defines the maximum amount of currency that can be borrowed with a specific collateral. 
+    It’s expressed in percentage: at LTV=75%, for every 1 ETH worth of collateral, borrowers will be able to borrow 0.75 ETH worth of the corresponding currency. 
+    Once a loan is taken, the LTV evolves with market conditions. 
+*/
+
+/*  Liquidation Threshold:    
+    The liquidation threshold is the percentage at which a loan is defined as undercollateralised. 
+    For example, a Liquidation threshold of 80% means that if the value rises above 80% of the collateral, the loan is undercollateralised and could be liquidated.
+    The delta between the Loan-To-Value and the Liquidation Threshold is a safety cushion for borrowers.
+*/
