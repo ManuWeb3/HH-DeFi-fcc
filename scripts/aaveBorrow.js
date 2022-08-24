@@ -24,7 +24,8 @@ async function main() {
     await approve(wethTokenAddress, lendingPool.address, AMOUNT, deployer)      // use await to run a f() incl. in this script
     //  Now, run deposit(), finally
     console.log("Depositing now...")
-    await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)            //  AMOUNT is ETH, not Weth ???, 
+    await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)            
+    //  'deployer' is here to get corresponding aTokens that got minted upon deposit of WETH. 
     //  why not tx.wait(1) ?? - recording @ Aug 19. Understand await better, later.
     //  so much so when we used 'await' for borrow()
     console.log("Deposited!!")
@@ -43,7 +44,7 @@ async function main() {
     //  .95 to avoid risk of getting liquidated
     //  reciprocal inside () also works in JS
     //  70% or 95% is under my control, not Aave's, for my safety, not borrowing 100%
-    const amountDaiToBorrow = availableBorrowsETH.toString() * (1/daiPrice.toNumber())
+    const amountDaiToBorrow = availableBorrowsETH.toString() * (1/daiPrice.toString()) * 0.95
     const amountDaiToBorrowWei = await ethers.utils.parseEther(amountDaiToBorrow.toString())        // no more decimal rep. in output
     //  Parse the 'etherString' representation of ether into a BigNumber instance of the amount of wei. I/p must be string.
     //  parseEther => BigNumber (equivalent of wei)
