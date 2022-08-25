@@ -21,14 +21,16 @@ async function main() {
     //  To deposit weth, we need weth-token contract address
     const wethTokenAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
     //  Approve: script below bcz will be used frequently
-    await approve(wethTokenAddress, lendingPool.address, AMOUNT, deployer)      // use await to run a f() incl. in this script
+    //  Deployer approved lendingPool.address to get WETH from itself, using wethAddress for WETH asset
+    await approveErc20(wethTokenAddress, lendingPool.address, AMOUNT, deployer)      // use await to run a f() incl. in this script
     //  Now, run deposit(), finally
     console.log("Depositing now...")
+    console.log("(API-call for deposit())")
     await lendingPool.deposit(wethTokenAddress, AMOUNT, deployer, 0)            
     //  'deployer' is here to get corresponding aTokens that got minted upon deposit of WETH. 
     //  why not tx.wait(1) ?? - recording @ Aug 19. Understand await better, later.
     //  so much so when we used 'await' for borrow()
-    console.log("Deposited!!")
+    console.log("You've Deposited!!")
     //  what if we gave deployer-address at arg#1 ?? Error is thrown - "unrecognizedContact", means it's looking for only ERC20 type Token contract
 
 
@@ -37,6 +39,7 @@ async function main() {
     //  arg - user address, o/p = 6 values
     //  if we have 1 ETH in collateral DOESN'T mean that we can borrow 1 ETH
     //  LTV: 75% of DAI can be borrowed out of 1 ETH's equivalent value
+    console.log("User Account Data after depositing WETH: ")
     let {availableBorrowsETH, totalDebtETH} = await getBorrowUserData(lendingPool, deployer)            //  2 curly braces to save a group of returned vars.
     const daiPrice = await getDaiPrice()
     //  calling these f() will print outputs only.
@@ -52,15 +55,39 @@ async function main() {
     console.log(`You can borrow ${amountDaiToBorrow} DAI`)
     
     // DAI address
-    const daiAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
-    await borrowDai(lendingPool, daiAddress, amountDaiToBorrowWei, deployer)      //  'amount' must in wei else error with decimal form (amountDaiToBorrow)
+    const daiTokenAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+    await borrowDai(lendingPool, daiTokenAddress, amountDaiToBorrowWei, deployer)      //  'amount' must in wei else error with decimal form (amountDaiToBorrow)
+    console.log("User Account Data after borrowing DAI: ")
     await getBorrowUserData(lendingPool, deployer)
     //  we're not storing the 2 returned values this time as we do nto need those here, also: no error will be there.
 
+    //  3. Repay:
+    //  again, we have to approve lendingPool so that it can take back the tokens while we repay
+    await repay(amountDaiToBorrowWei, daiTokenAddress, lendingPool, deployer )
+    //  amountDaiToBorrowWei = exactly the amount that we borrowed, expressed in wei. (not AMOUNT, not amountDaiToBorrow)
+    console.log("User Account Data after repaying DAI: ")
+    await getBorrowUserData(lendingPool, deployer)
 }
 
-async function borrowDai(lendingPool, daiAddress, amountDaiToBorrowWei, account ) {
-    const borrowTx = await lendingPool.borrow(daiAddress, amountDaiToBorrowWei, 1, 0, account)
+async function repay(amount, daiTokenAddress, lendingPool, account) {        // arghs that are gomnna used for approveErc20() and repay()
+    console.log("Repaying now...")
+    //  Deployer approved lendingPool.address to get DAI (back) from itself, using daiTokenAddress for DAI asset
+    await approveErc20(daiTokenAddress, lendingPool.address, amount, account)
+    //  now, exec repay()
+    console.log("(API-call for repay())")
+    const repayTx = await lendingPool.repay(daiTokenAddress, amount, 1, account)
+    await repayTx.wait(1)
+    console.log("You've Repaid!!")
+    //  HOWEVER, still you'll end up having tiny amount owed which you can repay by swapping ETH with DAI on Uniswap. say, and...
+    //  then completely repay all the DAI debt...
+    //  Why this tiny amount ?...
+    //  bcz we accrued interest on our borrwed asset DAI for the time we have it borrowed before repaying it.
+}
+
+async function borrowDai(lendingPool, daiTokenAddress, amountDaiToBorrowWei, account ) {
+    console.log("Borrowing now...")
+    console.log("(API-call for borrow())")
+    const borrowTx = await lendingPool.borrow(daiTokenAddress, amountDaiToBorrowWei, 1, 0, account)
     await borrowTx.wait(1)
     //  why did we not use wait(1) in deposit() ??? later, after understanding 'await'
     console.log("You've borrowed!!")
@@ -115,7 +142,7 @@ async function getLendingPool(account) {            //  this will interact with 
 }
 
     // generic mechanism to Approve before we deposit()
-async function approve(erc20Address, spenderAddress, amountToSpend, account) {
+async function approveErc20(erc20Address, spenderAddress, amountToSpend, account) {
     //  erc20Address - needed to further pass it on into the getContractAt() to get contract abstraction instance of ERC20.sol to run approve f()
     //  spender, amountToSpend will be used inside Approve()
     //  account = deployer everywhere
