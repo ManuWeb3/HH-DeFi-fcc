@@ -151,7 +151,7 @@ async function approveErc20(erc20Address, spenderAddress, amountToSpend, account
     const erc20Token = await ethers.getContractAt("IERC20", erc20Address, account)      // attach erc20Token with deployer
     //  can go with "IWeth.sol" as well bcz IERC20.sol is a subset of IWeth.sol (deposit(), withdraw() are extra)
     //  we only need approve() which is included in the both
-    //  MEANS - do not need an EXACT MATCH b/e the Interface and the contract at that address, just the function matters.
+    //  MEANS - do not need an EXACT MATCH b/w the Interface and the contract at that address, just the function matters.
     const tx = await erc20Token.approve(spenderAddress, amountToSpend)      //  deployer (msg.sender) is actually running this f()
     //  hence, balance of deployer is in the picture here, in case of only 1 depositor i.e. deployer, bal(WETH9.sol) = bal(deployer)...why?
     //  bcz contract's balance also gets updated with every .deposit() getting run.
